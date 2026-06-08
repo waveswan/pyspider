@@ -1,0 +1,26 @@
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    PYCURL_SSL_LIBRARY=openssl
+
+WORKDIR /opt/pyspider
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        libxml2-dev \
+        libxslt1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY . /opt/pyspider
+
+RUN python -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install --no-cache-dir -e . pymongo==3.13.0
+
+EXPOSE 5050 23333 24444
+
+CMD ["pyspider", "-c", "config_server.json", "all", "--run-in", "thread"]
+

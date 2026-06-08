@@ -1,0 +1,19 @@
+{
+  "data-path": "/opt/pyspider/data",
+  "taskdb": "mongodb+taskdb://mongo:27017/taskdb",
+  "projectdb": "mongodb+projectdb://mongo:27017/projectdb",
+  "resultdb": "mongodb+resultdb://mongo:27017/resultdb",
+  "phantomjs-proxy": "127.0.0.1:25555",
+  "puppeteer-proxy": "127.0.0.1:22222",
+  "scheduler": {
+    "xmlrpc-host": "127.0.0.1"
+  },
+  "fetcher": {
+    "xmlrpc-host": "127.0.0.1"
+  },
+  "webui": {
+    "host": "0.0.0.0",
+    "port": 5050
+  }
+}
+

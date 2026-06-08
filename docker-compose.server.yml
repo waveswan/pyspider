@@ -1,0 +1,38 @@
+services:
+  pyspider:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    command: pyspider -c config_server.json all --run-in thread
+    ports:
+      - "5050:5050"
+    volumes:
+      - pyspider_data:/opt/pyspider/data
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - pyspider
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - pyspider_mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pyspider
+    restart: unless-stopped
+
+networks:
+  pyspider:
+    driver: bridge
+
+volumes:
+  pyspider_data:
+  pyspider_mongo:
+
