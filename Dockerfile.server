@@ -1,4 +1,5 @@
-FROM python:3.11-slim-bookworm
+ARG PYSPIDER_BASE_IMAGE=python:3.11-slim-bookworm
+FROM ${PYSPIDER_BASE_IMAGE}
 
 ENV PYTHONUNBUFFERED=1 \
     PYCURL_SSL_LIBRARY=openssl
@@ -23,4 +24,3 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 EXPOSE 5050 23333 24444
 
 CMD ["pyspider", "-c", "config_server.json", "all", "--run-in", "thread"]
-

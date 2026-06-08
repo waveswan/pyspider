@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server
+      args:
+        PYSPIDER_BASE_IMAGE: component-parser-app:latest
     command: pyspider -c config_server.json all --run-in thread
     ports:
       - "5050:5050"
@@ -35,4 +37,3 @@ networks:
 volumes:
   pyspider_data:
   pyspider_mongo:
-
