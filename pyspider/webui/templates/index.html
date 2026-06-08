@@ -174,6 +174,24 @@
           </tr>
         </tbody>
       </table>
+      <div class="proxy-config panel panel-default">
+        <div class="panel-heading clearfix">
+          <strong>Global HTTP proxies</strong>
+          <span id="proxy-config-status" class="pull-right text-muted">
+            {{ proxy_config.count }} configured
+          </span>
+        </div>
+        <div class="panel-body">
+          <form id="proxy-config-form">
+            <div class="form-group">
+              <textarea class="form-control" name="proxies" rows="3"
+                        placeholder="host:port or user:password@host:port, one proxy per line">{{ proxy_config.proxies | join('\n') }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-default btn-sm">Save proxies</button>
+            <button type="button" id="proxy-config-clear" class="btn btn-link btn-sm">Clear</button>
+          </form>
+        </div>
+      </div>
     </section>
     <script>
       // json projects data for vue
@@ -183,8 +201,42 @@
     <script src="{{ url_for('cdn', path='x-editable/1.5.0/bootstrap3-editable/js/bootstrap-editable.min.js') }}"></script>
     <script src="{{ url_for('cdn', path='sortable/0.6.0/js/sortable.min.js') }}"></script>
     <script src="{{ url_for('cdn', path='vue/1.0.26/vue.min.js') }}"></script>
+    <script>
+      $(function() {
+        function set_proxy_status(text, class_name) {
+          var status = $('#proxy-config-status');
+          status.removeClass('text-muted text-success text-danger').addClass(class_name || 'text-muted');
+          status.text(text);
+        }
+
+        $('#proxy-config-form').on('submit', function(ev) {
+          ev.preventDefault();
+          set_proxy_status('saving...', 'text-muted');
+          $.ajax({
+            type: 'POST',
+            url: '/proxy-config',
+            data: $(this).serialize(),
+            success: function(data) {
+              var count = data.count || 0;
+              set_proxy_status(count + ' configured', count ? 'text-success' : 'text-muted');
+            },
+            error: function(xhr) {
+              var message = 'save failed';
+              if (xhr.responseJSON && xhr.responseJSON.error) {
+                message = xhr.responseJSON.error;
+              }
+              set_proxy_status(message, 'text-danger');
+            }
+          });
+        });
+
+        $('#proxy-config-clear').on('click', function() {
+          $('#proxy-config-form textarea[name=proxies]').val('');
+          $('#proxy-config-form').submit();
+        });
+      });
+    </script>
     <script src="{{ url_for('static', filename='index.min.js') }}"></script>
   </body>
 </html>
 <!-- vim: set et sw=2 ts=2 sts=2 ff=unix fenc=utf8 syntax=htmldjango: -->
-

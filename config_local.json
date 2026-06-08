@@ -1,0 +1,17 @@
+{
+  "taskdb": "mongodb+taskdb://127.0.0.1:27018/taskdb",
+  "projectdb": "mongodb+projectdb://127.0.0.1:27018/projectdb",
+  "resultdb": "mongodb+resultdb://127.0.0.1:27018/resultdb",
+  "phantomjs-proxy": "127.0.0.1:25555",
+  "puppeteer-proxy": "127.0.0.1:22222",
+  "scheduler": {
+    "xmlrpc-host": "127.0.0.1"
+  },
+  "fetcher": {
+    "xmlrpc-host": "127.0.0.1"
+  },
+  "webui": {
+    "host": "127.0.0.1",
+    "port": 5050
+  }
+}

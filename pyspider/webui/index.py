@@ -5,7 +5,9 @@
 #         http://binux.me
 # Created on 2014-02-22 23:20:39
 
+import os
 import socket
+import json as std_json
 
 from six import iteritems, itervalues
 from flask import render_template, request, json
@@ -20,12 +22,87 @@ from .app import app
 index_fields = ['name', 'group', 'status', 'comments', 'rate', 'burst', 'updatetime']
 
 
+def proxy_config_path():
+    return os.path.join(app.config.get('data_path', './data'), 'proxy_config.json')
+
+
+def normalize_proxies(value):
+    if isinstance(value, list):
+        proxies = value
+    else:
+        proxies = value.splitlines()
+    return [x.strip() for x in proxies if x and x.strip()]
+
+
+def load_proxy_config():
+    try:
+        with open(proxy_config_path()) as fp:
+            data = std_json.load(fp)
+    except Exception:
+        data = {}
+    proxies = normalize_proxies(data.get('proxies', []))
+    data['proxies'] = proxies
+    data['enabled'] = bool(proxies)
+    data['count'] = len(proxies)
+    return data
+
+
+def save_proxy_config(proxies):
+    data = {
+        'proxies': normalize_proxies(proxies),
+    }
+    path = proxy_config_path()
+    dirname = os.path.dirname(path)
+    if dirname and not os.path.exists(dirname):
+        os.makedirs(dirname)
+    with open(path, 'w') as fp:
+        std_json.dump(data, fp, indent=2)
+    data['enabled'] = bool(data['proxies'])
+    data['count'] = len(data['proxies'])
+    return data
+
+
+def apply_proxy_config(proxies):
+    rpc = app.config.get('fetcher_rpc')
+    if rpc is None:
+        return None
+    return rpc.set_proxy_config(proxies)
+
+
 @app.route('/')
 def index():
     projectdb = app.config['projectdb']
     projects = sorted(projectdb.get_all(fields=index_fields),
                       key=lambda k: (0 if k['group'] else 1, k['group'] or '', k['name']))
-    return render_template("index.html", projects=projects)
+    return render_template("index.html", projects=projects,
+                           proxy_config=load_proxy_config())
+
+
+@app.route('/proxy-config', methods=['GET', 'POST'])
+def proxy_config():
+    if request.method == 'GET':
+        config = load_proxy_config()
+        try:
+            rpc = app.config.get('fetcher_rpc')
+            if rpc is not None:
+                remote_config = rpc.get_proxy_config()
+                if remote_config is not None:
+                    config.update(remote_config)
+        except Exception as e:
+            config['error'] = repr(e)
+        return json.dumps(config), 200, {'Content-Type': 'application/json'}
+
+    proxies = request.form.get('proxies', '')
+    config = save_proxy_config(proxies)
+    try:
+        remote_config = apply_proxy_config(config['proxies'])
+        if remote_config is not None:
+            config.update(remote_config)
+    except Exception as e:
+        config['error'] = repr(e)
+        return json.dumps(config), 502, {'Content-Type': 'application/json'}
+
+    return json.dumps(config), 200, {'Content-Type': 'application/json'}
 
 
 @app.route('/queues')

@@ -5,4 +5,6 @@
 #         http://binux.me
 # Created on 2014-11-17 19:17:12
 
+from pyspider.libs import py3_compat  # noqa
+
 __version__ = '0.4.0'

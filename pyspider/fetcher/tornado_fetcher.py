@@ -86,6 +86,8 @@ class Fetcher(object):
         self._running = False
         self._quit = False
         self.proxy = proxy
+        self.proxy_pool = [proxy] if proxy else []
+        self.proxy_index = 0
         self.async_mode = async_mode
         self.ioloop = tornado.ioloop.IOLoop()
 
@@ -239,8 +241,8 @@ class Fetcher(object):
         proxy_string = None
         if isinstance(task_fetch.get('proxy'), six.string_types):
             proxy_string = task_fetch['proxy']
-        elif self.proxy and task_fetch.get('proxy', True):
-            proxy_string = self.proxy
+        elif task_fetch.get('proxy', True):
+            proxy_string = self.next_proxy()
         if proxy_string:
             if '://' not in proxy_string:
                 proxy_string = 'http://' + proxy_string
@@ -789,6 +791,29 @@ class Fetcher(object):
     def size(self):
         return self.http_client.size()
 
+    def next_proxy(self):
+        if not self.proxy_pool:
+            return self.proxy
+        proxy = self.proxy_pool[self.proxy_index % len(self.proxy_pool)]
+        self.proxy_index += 1
+        return proxy
+
+    def set_proxy_config(self, proxies):
+        if isinstance(proxies, six.string_types):
+            proxies = proxies.splitlines()
+        self.proxy_pool = [x.strip() for x in proxies if x and x.strip()]
+        self.proxy = self.proxy_pool[0] if self.proxy_pool else None
+        self.proxy_index = 0
+        logger.info("global proxy config updated: %d proxies", len(self.proxy_pool))
+        return self.get_proxy_config()
+
+    def get_proxy_config(self):
+        return {
+            'proxies': self.proxy_pool or ([self.proxy] if self.proxy else []),
+            'enabled': bool(self.proxy_pool or self.proxy),
+            'count': len(self.proxy_pool or ([self.proxy] if self.proxy else [])),
+        }
+
     def xmlrpc_run(self, port=24444, bind='127.0.0.1', logRequests=False):
         '''Run xmlrpc server'''
         import umsgpack
@@ -802,6 +827,8 @@ class Fetcher(object):
 
         application.register_function(self.quit, '_quit')
         application.register_function(self.size)
+        application.register_function(self.set_proxy_config)
+        application.register_function(self.get_proxy_config)
 
         def sync_fetch(task):
             result = self.sync_fetch(task)

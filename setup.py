@@ -18,26 +18,27 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 import pyspider
 
 install_requires = [
-    'Flask==0.10',
-    'Jinja2==2.7',
+    'Flask==1.1.4',
+    'Jinja2==2.11.3',
+    'MarkupSafe==2.0.1',
     'chardet==3.0.4',
     'cssselect==0.9',
-    "lxml==4.3.3",
-    'pycurl==7.43.0.3',
-    'requests==2.24.0',
-    'Flask-Login==0.2.11',
+    'lxml==4.9.4',
+    'pycurl==7.45.3',
+    'requests==2.31.0',
+    'Flask-Login==0.6.3',
     'u-msgpack-python==1.6',
-    'click==3.3',
-    'six==1.10.0',
-    'tblib==1.4.0',
-    'wsgidav==2.3.0',
+    'click==7.1.2',
+    'six==1.16.0',
+    'tblib==3.0.0',
+    'wsgidav==3.1.1',
     'tornado>=3.2,<=4.5.3',
     'pyquery',
 ]
 
 extras_require_all = [
     'mysql-connector-python==8.0.16',
-    'pymongo==3.9.0',
+    'pymongo==3.13.0',
     'redis==2.10.6',
     'redis-py-cluster==1.3.6',
     'psycopg2==2.8.2',

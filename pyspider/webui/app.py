@@ -57,7 +57,7 @@ class QuitableFlask(Flask):
 
         try:
             from .webdav import dav_app
-        except ImportError as e:
+        except Exception as e:
             logger.warning('WebDav interface not enabled: %r', e)
             dav_app = None
         if dav_app:

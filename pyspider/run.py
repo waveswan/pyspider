@@ -355,6 +355,7 @@ def webui(ctx, host, port, cdn, scheduler_rpc, fetcher_rpc, max_rate, max_burst,
     app.config['projectdb'] = g.projectdb
     app.config['resultdb'] = g.resultdb
     app.config['cdn'] = cdn
+    app.config['data_path'] = g.data_path
 
     if max_rate:
         app.config['max_rate'] = max_rate
@@ -376,13 +377,21 @@ def webui(ctx, host, port, cdn, scheduler_rpc, fetcher_rpc, max_rate, max_burst,
     if isinstance(fetcher_rpc, six.string_types):
         import umsgpack
         fetcher_rpc = connect_rpc(ctx, None, fetcher_rpc)
+        app.config['fetcher_rpc'] = fetcher_rpc
         app.config['fetch'] = lambda x: umsgpack.unpackb(fetcher_rpc.fetch(x).data)
     else:
+        app.config['fetcher_rpc'] = connect_rpc(ctx, None, 'http://127.0.0.1:24444/')
         # get fetcher instance for webui
         fetcher_config = g.config.get('fetcher', {})
         webui_fetcher = ctx.invoke(fetcher, async_mode=False, get_object=True, no_input=True, **fetcher_config)
 
         app.config['fetch'] = lambda x: webui_fetcher.fetch(x)
+
+    try:
+        from pyspider.webui.index import load_proxy_config, apply_proxy_config
+        apply_proxy_config(load_proxy_config().get('proxies', []))
+    except Exception as e:
+        logging.getLogger('webui').warning('Global proxy config not applied: %r', e)
 
     # scheduler rpc
     if isinstance(scheduler_rpc, six.string_types):
