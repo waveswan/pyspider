@@ -30,6 +30,19 @@
 }
 ```
 
+## Group
+
+Поле `group` в результате товара - это не группа pyspider-проекта в Web UI.
+
+Для Marketlab `group` означает целевую бизнес-базу MongoDB, из которой legacy API будет читать товары. Например:
+
+- `group: "electronik"` -> API читает товары из базы `electronik`;
+- целевая коллекция для нормализованных товаров: `electronik.parsed_products`.
+
+Если пользователь не указал другое значение, для товарных парсеров использовать `electronik`.
+
+Важно: pyspider также имеет свое поле `project.group` в интерфейсе проектов. Оно служит для группировки/lock в pyspider и не должно смешиваться с товарным `result["group"]`.
+
 ## Обход каталога
 
 1. `on_start` открывает стартовый URL или список тестовых карточек.
@@ -92,5 +105,6 @@
 - `PARSER_MONGO_PASSWORD`
 - `PARSER_MONGO_AUTH_SOURCE`
 - `PARSER_PROXY`
+- `PARSER_MARKET_GROUP`
 - `PARSER_DOWNLOAD_DIR`
 - `PARSER_PUBLIC_UPLOAD_DIR`

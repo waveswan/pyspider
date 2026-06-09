@@ -80,7 +80,8 @@ class HandlerDima(BaseHandler):
     )
 
     i = {
-        'group': 'horeca',
+        # Marketlab database group. Keep separate from pyspider project.group.
+        'group': env('PARSER_MARKET_GROUP', 'electronik'),
         'name': 'example.ru',
         'url': 'https://example.ru/catalog/',
 

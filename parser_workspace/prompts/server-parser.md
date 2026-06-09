@@ -24,6 +24,8 @@
 - изучи /home/deploy/pyspider-modernized/parser_workspace/docs/parser-standard.md;
 - используй /home/deploy/pyspider-modernized/parser_workspace/templates/pyspider_product_parser.py как основу;
 - итоговый результат detail_page должен соответствовать parser-standard.md;
+- поле `group` в результате товара означает Marketlab database group; если пользователь не указал иначе, используй `electronik`;
+- не путай товарный `result["group"]` с pyspider project group в Web UI;
 - картинки, файлы, документация и 3D-модели должны скачиваться на сервер и сохраняться в результате локальными публичными путями;
 - документация хранится как [{"name": "...", "url": "..."}];
 - 3D-модели хранятся в models_3d как список локальных публичных путей.
