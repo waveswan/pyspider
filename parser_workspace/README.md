@@ -8,6 +8,7 @@
 - `templates/pyspider_product_parser.py` - базовый шаблон товарного парсера.
 - `prompts/new-parser.md` - промпт для создания нового парсера через Codex.
 - `prompts/server-parser.md` - промпт для создания и тестирования парсера напрямую на сервере.
+- `prompts/market-api.md` - промпт для разработки FastAPI-совместимого API для legacy Marketlab.
 - `examples/` - тестовые или готовые проекты под конкретные сайты.
 
 ## Рекомендуемый процесс
