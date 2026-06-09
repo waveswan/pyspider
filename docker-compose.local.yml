@@ -4,6 +4,9 @@ services:
       context: .
       dockerfile: Dockerfile.server
     command: pyspider -c config_server.json all --run-in thread
+    environment:
+      WEBUI_USERNAME: ${WEBUI_USERNAME:-}
+      WEBUI_PASSWORD: ${WEBUI_PASSWORD:-}
     ports:
       - "5050:5050"
     volumes:

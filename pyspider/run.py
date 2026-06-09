@@ -357,6 +357,10 @@ def webui(ctx, host, port, cdn, scheduler_rpc, fetcher_rpc, max_rate, max_burst,
     app.config['cdn'] = cdn
     app.config['data_path'] = g.data_path
 
+    username = username or os.environ.get('WEBUI_USERNAME')
+    password = password or os.environ.get('WEBUI_PASSWORD')
+    need_auth = need_auth or bool(username and password)
+
     if max_rate:
         app.config['max_rate'] = max_rate
     if max_burst:
