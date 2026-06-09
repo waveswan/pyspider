@@ -7,7 +7,7 @@ services:
     ports:
       - "5050:5050"
     volumes:
-      - pyspider_local_data:/opt/pyspider/data
+      - ./data:/opt/pyspider/data
     depends_on:
       mongo:
         condition: service_healthy
@@ -18,7 +18,7 @@ services:
   mongo:
     image: mongo:7
     volumes:
-      - pyspider_local_mongo:/data/db
+      - ./data/mongodb:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -31,7 +31,3 @@ services:
 networks:
   pyspider-local:
     driver: bridge
-
-volumes:
-  pyspider_local_data:
-  pyspider_local_mongo:
