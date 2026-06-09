@@ -18,6 +18,8 @@
 - На сервере есть другой парсер component-parser. Его не трогать.
 - Не использовать порт 8000 на сервере, он занят существующим component-parser.
 - Для нового API использовать отдельный FastAPI-сервис, например внешний порт 8081 и внутренний порт 8080.
+- На этом этапе не нужно строить универсальную платформу для всех доноров. Реально рабочий парсер, который нужно переписать/довести до API, это `cnlinko`.
+- `group` в legacy Marketlab исторически означал базу данных, из которой нужно читать товары. Теперь `group` нужно поддержать как безопасный выбор целевой MongoDB-базы, например `group=electronik` -> база `electronik`.
 
 Текущая MongoDB-реальность pyspider:
 - pyspider использует MongoDB сервис `mongo`.
@@ -33,13 +35,31 @@
 - В каждом документе resultdb поле `result` хранит JSON-строку или JSON-объект с товаром, который соответствует parser_workspace/docs/parser-standard.md.
 
 Главная архитектурная задача:
-Сделай API не напрямую по всем resultdb-коллекциям, а через нормализованную коллекцию `parsed_products`.
+Сделай API не напрямую по всем resultdb-коллекциям, а через нормализованную товарную коллекцию в целевой базе Marketlab.
+
+Рекомендуемая целевая модель:
+- `group` выбирает MongoDB database;
+- товары хранятся в одной коллекции внутри этой базы;
+- имя коллекции вынести в env, default `parsed_products`;
+- пример:
+  - request: `/market/parsing/catalog?api_key=...&group=electronik&donor=cnlinko&page=1`
+  - Mongo source для API: database `electronik`, collection `parsed_products`.
+
+Важно по безопасности:
+- не использовать `group` как произвольное имя базы без проверки;
+- разрешенные базы задать whitelist-настройкой, например:
+  - `MARKET_API_ALLOWED_GROUPS=electronik`
+  - или `MARKET_API_GROUP_DB_MAP=electronik:electronik`
+- если `group` не передан, использовать `MARKET_API_DEFAULT_GROUP=electronik`;
+- если `group` неизвестный, вернуть HTTP 400:
+  `{"detail": "Unknown group"}`.
 
 Почему:
 - legacy API должно быстро искать и фильтровать;
 - нужны индексы по donor/vendor/categories/name;
 - pyspider resultdb хранит данные по коллекциям проектов, что неудобно для API;
-- парсеры могут называться `<donor>_test`, `<donor>`, а donor в товаре хранится в самом result.
+- Marketlab уже умеет передавать `group`, и это можно использовать для выбора бизнес-базы;
+- сейчас нужно поддержать прежде всего один донорский поток: `cnlinko` -> `electronik.parsed_products`.
 
 Рекомендуемая структура:
 - новый пакет/папка: market_api/
@@ -55,14 +75,17 @@
 - добавить `.env.example` без секретов
 
 API source of truth:
-- API читает из MongoDB коллекции `parsed_products`.
-- Коллекция может быть в базе `market_api`, например:
-  mongodb://mongo:27017/market_api, collection parsed_products
-- Или в базе `resultdb`, но лучше отдельная база `market_api`.
+- API читает из MongoDB коллекции `parsed_products` в базе, выбранной через `group`.
+- Не использовать отдельную общую базу `market_api` как основной источник товаров, если legacy ожидает `group` как ссылку на бизнес-базу.
+- Для `group=electronik` source of truth:
+  mongodb://mongo:27017/electronik, collection parsed_products
 - Настроить через env:
   - MARKET_API_MONGO_URL=mongodb://mongo:27017
-  - MARKET_API_DB=market_api
+  - MARKET_API_DEFAULT_GROUP=electronik
+  - MARKET_API_ALLOWED_GROUPS=electronik
+  - MARKET_API_GROUP_DB_MAP=electronik:electronik
   - MARKET_API_COLLECTION=parsed_products
+  - MARKET_API_SOURCE_PROJECTS=cnlinko
   - PARSER_API_KEY=<secret>
   - PAGE_SIZE=100
 
@@ -71,17 +94,23 @@ API source of truth:
   python -m market_api.sync
 - Команда должна:
   1. подключиться к MongoDB;
-  2. пройти по всем коллекциям resultdb, кроме system collections;
+  2. читать только разрешенные source-проекты из `MARKET_API_SOURCE_PROJECTS`, на первом этапе это `cnlinko`;
   3. прочитать документы с полями taskid, url, result, updatetime;
   4. распарсить result, если это JSON-строка;
   5. пропустить пустые/не товарные результаты;
-  6. нормализовать поля в parsed_products;
+  6. нормализовать поля в `<target_db>.parsed_products`, где target_db выбран из `MARKET_API_DEFAULT_GROUP` или явного аргумента sync-команды;
   7. сделать upsert по стабильному ключу:
      - external_id, если есть;
      - иначе id, если есть;
      - иначе taskid;
      - вместе с donor/project, чтобы не было конфликтов;
   8. сохранить source_project, source_taskid, source_url, source_updatetime.
+
+CLI sync должен поддержать явный group:
+  python -m market_api.sync --group electronik --project cnlinko
+
+Если `--project` не передан, использовать `MARKET_API_SOURCE_PROJECTS`.
+Если `--group` не передан, использовать `MARKET_API_DEFAULT_GROUP`.
 
 Нормализация товара:
 - Pyspider parser-standard использует часть camelCase и часть snake_case.
@@ -95,11 +124,11 @@ API source of truth:
   {
     "_id": ObjectId,
     "external_id": "stable-id",
-    "donor": "weipu.cn",
-    "name": "Разъем WEIPU SA2010",
-    "vendor": "WEIPU",
-    "model": "SA2010",
-    "artnumber": "SA2010/S10",
+    "donor": "cnlinko",
+    "name": "CNLinko connector example",
+    "vendor": "CNLinko",
+    "model": "LP-16",
+    "artnumber": "LP-16",
     "type_prefix": "Разъем",
     "categories": ["Connectors", "Circular connectors", "SA series"],
     "currency": "RUB",
@@ -113,7 +142,7 @@ API source of truth:
     "files": [],
     "documents": [{"name": "Инструкция", "url": "/upload/..."}],
     "models_3d": [],
-    "source_project": "weipu_test",
+    "source_project": "cnlinko",
     "source_taskid": "...",
     "source_url": "...",
     "created_at": datetime,
@@ -143,7 +172,7 @@ API source of truth:
 - Не возвращать HTML.
 - Добавить OpenAPI-документацию FastAPI.
 - Добавить Pydantic response models.
-- Игнорировать неизвестные query params, включая `group`.
+- Игнорировать неизвестные query params, но `group` не игнорировать: использовать его как безопасный выбор MongoDB-базы через whitelist/map.
 - Не падать, если у товара нет необязательных полей.
 - Добавить обработку ошибок MongoDB:
   - при ошибке подключения вернуть 503;
@@ -169,11 +198,13 @@ Query params:
 - q: string, обязательный поисковый запрос
 
 Необязательные параметры, которые можно игнорировать:
-- group
 - page
 - donor
 - vendor
 - catalog
+
+Дополнительный параметр:
+- group: optional, default `MARKET_API_DEFAULT_GROUP`; выбирает MongoDB-базу через whitelist/map.
 
 Поведение:
 - Если q пустой, вернуть {"items": []}.
@@ -190,12 +221,12 @@ Query params:
   "items": [
     {
       "name": "Название товара",
-      "donor": "weipu.cn",
+      "donor": "cnlinko",
       "price": 123.45,
       "typePrefix": "Разъем",
-      "vendor": "WEIPU",
-      "model": "SA2010",
-      "artnumber": "SA2010/S10",
+      "vendor": "CNLinko",
+      "model": "LP-16",
+      "artnumber": "LP-16",
       "images": ["https://..."],
       "characteristics": [
         {"name": "Количество контактов", "value": "10"}
@@ -219,13 +250,11 @@ GET /market/parsing/catalog
 
 Query params:
 - api_key: string, обязательный
-- donor: string, обязательный, например "weipu.cn"
+- donor: string, обязательный, например "cnlinko"
 - page: integer, optional, default 1
 - catalog: string, optional, default ""
 - vendor: string, optional, default ""
-
-Необязательные параметры, которые можно игнорировать:
-- group
+- group: optional, default `MARKET_API_DEFAULT_GROUP`; выбирает MongoDB-базу через whitelist/map, например `electronik`.
 
 Фильтрация:
 - donor фильтрует по donor;
@@ -248,11 +277,11 @@ Pagination:
   "items": [
     {
       "id": "external-product-id",
-      "name": "Разъем WEIPU SA2010",
-      "donor": "weipu.cn",
-      "vendor": "WEIPU",
-      "model": "SA2010",
-      "artnumber": "SA2010/S10",
+      "name": "CNLinko connector example",
+      "donor": "cnlinko",
+      "vendor": "CNLinko",
+      "model": "LP-16",
+      "artnumber": "LP-16",
       "typePrefix": "Разъем",
       "categories": ["Connectors", "Circular connectors", "SA series"],
       "currency": "RUB",
@@ -303,8 +332,11 @@ Docker:
   - ports: "8081:8080"
   - env:
     - MARKET_API_MONGO_URL=mongodb://mongo:27017
-    - MARKET_API_DB=market_api
+    - MARKET_API_DEFAULT_GROUP=electronik
+    - MARKET_API_ALLOWED_GROUPS=electronik
+    - MARKET_API_GROUP_DB_MAP=electronik:electronik
     - MARKET_API_COLLECTION=parsed_products
+    - MARKET_API_SOURCE_PROJECTS=cnlinko
     - PARSER_API_KEY=${PARSER_API_KEY}
     - PAGE_SIZE=100
 - Добавить такой же сервис в docker-compose.local.yml.
@@ -316,9 +348,9 @@ Docker:
 - Проверить:
   1. GET /health возвращает {"status": "ok"}.
   2. Неверный api_key возвращает 403 {"detail": "Invalid api_key"}.
-  3. Лишний query param group не ломает /search и /catalog.
-  4. /market/parsing/search?api_key=...&q=SA2010 возвращает {"items": [...]}.
-  5. /market/parsing/catalog?api_key=...&donor=weipu.cn&page=1 возвращает {"finish": bool, "items": [...]}.
+  3. Query param group выбирает разрешенную базу, например electronik, и не ломает /search и /catalog.
+  4. /market/parsing/search?api_key=...&q=<known_cnlinko_query>&group=electronik возвращает {"items": [...]}.
+  5. /market/parsing/catalog?api_key=...&donor=cnlinko&page=1&group=electronik возвращает {"finish": bool, "items": [...]}.
   6. /catalog возвращает categories как массив строк.
   7. Товар без необязательных полей не ломает response serialization.
   8. Pagination finish работает при 0, 1, PAGE_SIZE и PAGE_SIZE+1 товарах.
@@ -331,18 +363,18 @@ Docker:
    docker compose -p pyspider-modernized -f docker-compose.server.yml up -d --build market-api
 5. Выполни синхронизацию:
    docker compose -p pyspider-modernized -f docker-compose.server.yml exec -T market-api \
-     python -m market_api.sync
+     python -m market_api.sync --group electronik --project cnlinko
 6. Проверь:
    curl -s http://127.0.0.1:8081/health
-   curl -s 'http://127.0.0.1:8081/market/parsing/search?api_key=<key>&q=SA2010'
-   curl -s 'http://127.0.0.1:8081/market/parsing/catalog?api_key=<key>&donor=weipu.cn&page=1&group=ignored'
+   curl -s 'http://127.0.0.1:8081/market/parsing/search?api_key=<key>&q=<known_cnlinko_query>&group=electronik'
+   curl -s 'http://127.0.0.1:8081/market/parsing/catalog?api_key=<key>&donor=cnlinko&page=1&group=electronik'
 
 Acceptance criteria:
 1. GET /health возвращает JSON status ok.
-2. GET /market/parsing/search?api_key=...&q=SA2010 возвращает {items: [...]}.
-3. GET /market/parsing/catalog?api_key=...&donor=weipu.cn&page=1 возвращает {finish, items}.
+2. GET /market/parsing/search?api_key=...&q=<known_cnlinko_query>&group=electronik возвращает {items: [...]}.
+3. GET /market/parsing/catalog?api_key=...&donor=cnlinko&page=1&group=electronik возвращает {finish, items}.
 4. Ответ /catalog содержит categories как массив строк.
-5. Лишний query param group не ломает запрос.
+5. Query param group выбирает разрешенную базу, а неизвестный group возвращает 400.
 6. Старый Meteor-код может читать response.data.items и response.data.finish без изменений.
 7. API работает в Docker рядом с pyspider.
 8. Существующий component-parser на сервере не остановлен и не изменен.
@@ -359,7 +391,7 @@ parser_workspace/prompts/market-api.md
 
 Ключевые реалии проекта:
 - pyspider results лежат в Mongo resultdb, по коллекциям resultdb.<project>, внутри поля result;
-- сделай нормализованную коллекцию market_api.parsed_products;
+- сделай нормализованную коллекцию electronik.parsed_products, где group=electronik выбирает базу electronik;
 - API endpoints: /health, /market/parsing/search, /market/parsing/catalog;
 - api_key брать из env PARSER_API_KEY;
 - Docker service market-api, внешний порт 8081, не использовать 8000;
