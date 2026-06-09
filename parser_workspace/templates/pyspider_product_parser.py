@@ -125,7 +125,7 @@ class HandlerDima(BaseHandler):
             int(env('PARSER_MONGO_PORT', '27017')),
             **kwargs
         )
-        return client[env('PARSER_MONGO_DB', 'pyspider')]
+        return client[env('PARSER_MONGO_DB', 'resultdb')]
 
     @every(minutes=24 * 60)
     def on_start(self):

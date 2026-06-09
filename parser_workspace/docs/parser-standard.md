@@ -34,10 +34,10 @@
 
 Поле `group` в результате товара - это не группа pyspider-проекта в Web UI.
 
-Для Marketlab `group` означает целевую бизнес-базу MongoDB, из которой legacy API будет читать товары. Например:
+Для Marketlab `group` означает целевую товарную коллекцию внутри MongoDB `resultdb`, из которой legacy API будет читать товары. Например:
 
-- `group: "electronik"` -> API читает товары из базы `electronik`;
-- целевая коллекция для нормализованных товаров: `electronik.parsed_products`.
+- `group: "electronik"` -> API читает товары из коллекции `electronik` в базе `resultdb`;
+- целевая Mongo namespace для товаров: `resultdb.electronik`;
 
 Если пользователь не указал другое значение, для товарных парсеров использовать `electronik`.
 
@@ -101,6 +101,7 @@
 
 - `PARSER_MONGO_HOST`
 - `PARSER_MONGO_PORT`
+- `PARSER_MONGO_DB`
 - `PARSER_MONGO_USER`
 - `PARSER_MONGO_PASSWORD`
 - `PARSER_MONGO_AUTH_SOURCE`

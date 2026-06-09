@@ -19,7 +19,7 @@
 - Не использовать порт 8000 на сервере, он занят существующим component-parser.
 - Для нового API использовать отдельный FastAPI-сервис, например внешний порт 8081 и внутренний порт 8080.
 - На этом этапе не нужно строить универсальную платформу для всех доноров. Реально рабочий парсер, который нужно переписать/довести до API, это `cnlinko`.
-- `group` в legacy Marketlab исторически означал базу данных, из которой нужно читать товары. Теперь `group` нужно поддержать как безопасный выбор целевой MongoDB-базы, например `group=electronik` -> база `electronik`.
+- `group` в legacy Marketlab исторически означает группу/коллекцию товаров внутри `resultdb`. Теперь `group` нужно поддержать как безопасный выбор коллекции, например `group=electronik` -> Mongo namespace `resultdb.electronik`.
 
 Текущая MongoDB-реальность pyspider:
 - pyspider использует MongoDB сервис `mongo`.
@@ -27,29 +27,31 @@
   - taskdb: mongodb+taskdb://mongo:27017/taskdb
   - projectdb: mongodb+projectdb://mongo:27017/projectdb
   - resultdb: mongodb+resultdb://mongo:27017/resultdb
-- В resultdb нет единой products-коллекции.
-- Результаты лежат в отдельных коллекциях по имени pyspider-проекта:
-  - resultdb.entero_test
-  - resultdb.cnlinko_test
-  - и будущие resultdb.<project>
-- В каждом документе resultdb поле `result` хранит JSON-строку или JSON-объект с товаром, который соответствует parser_workspace/docs/parser-standard.md.
+- Для Marketlab API товары должны лежать в коллекциях по `group` внутри базы `resultdb`.
+- На текущем этапе у нас один реально рабочий парсер: `cnlinko`.
+- Его товары должны попадать в одну целевую коллекцию:
+  - `resultdb.electronik`, если `group=electronik`;
+  - в общем виде `resultdb.<group>`.
+- Не строить логику вокруг множества pyspider-проектов и `resultdb.<project>`.
+- Если старые тестовые коллекции вроде `resultdb.cnlinko_test` существуют, считать их временным наследием разработки, а не источником для legacy API.
+- В документах `resultdb.<group>` товар должен быть сохранен как обычный MongoDB-документ с полями из parser_workspace/docs/parser-standard.md. API не должен требовать обертку pyspider вида `{taskid, url, result}` для основной выдачи.
 
 Главная архитектурная задача:
-Сделай API не напрямую по всем resultdb-коллекциям, а через нормализованную товарную коллекцию в целевой базе Marketlab.
+Сделай API, который читает товары из одной коллекции `resultdb.<group>`.
 
 Рекомендуемая целевая модель:
-- `group` выбирает MongoDB database;
-- товары хранятся в одной коллекции внутри этой базы;
-- имя коллекции вынести в env, default `parsed_products`;
+- `group` выбирает MongoDB collection внутри базы `resultdb`;
+- товары хранятся в одной коллекции на группу;
+- для текущей задачи основной group: `electronik`;
 - пример:
   - request: `/market/parsing/catalog?api_key=...&group=electronik&donor=cnlinko&page=1`
-  - Mongo source для API: database `electronik`, collection `parsed_products`.
+  - Mongo source для API: database `resultdb`, collection `electronik`.
 
 Важно по безопасности:
-- не использовать `group` как произвольное имя базы без проверки;
-- разрешенные базы задать whitelist-настройкой, например:
+- не использовать `group` как произвольное имя коллекции без проверки;
+- разрешенные group/collections задать whitelist-настройкой, например:
   - `MARKET_API_ALLOWED_GROUPS=electronik`
-  - или `MARKET_API_GROUP_DB_MAP=electronik:electronik`
+  - или `MARKET_API_GROUP_COLLECTION_MAP=electronik:electronik`
 - если `group` не передан, использовать `MARKET_API_DEFAULT_GROUP=electronik`;
 - если `group` неизвестный, вернуть HTTP 400:
   `{"detail": "Unknown group"}`.
@@ -57,9 +59,8 @@
 Почему:
 - legacy API должно быстро искать и фильтровать;
 - нужны индексы по donor/vendor/categories/name;
-- pyspider resultdb хранит данные по коллекциям проектов, что неудобно для API;
-- Marketlab уже умеет передавать `group`, и это можно использовать для выбора бизнес-базы;
-- сейчас нужно поддержать прежде всего один донорский поток: `cnlinko` -> `electronik.parsed_products`.
+- Marketlab уже умеет передавать `group`, и это нужно использовать для выбора коллекции товаров;
+- сейчас нужно поддержать прежде всего один донорский поток: `cnlinko` -> `resultdb.electronik`.
 
 Рекомендуемая структура:
 - новый пакет/папка: market_api/
@@ -75,42 +76,40 @@
 - добавить `.env.example` без секретов
 
 API source of truth:
-- API читает из MongoDB коллекции `parsed_products` в базе, выбранной через `group`.
-- Не использовать отдельную общую базу `market_api` как основной источник товаров, если legacy ожидает `group` как ссылку на бизнес-базу.
+- API читает из MongoDB `resultdb.<group>`.
+- Не создавать отдельную товарную базу/коллекцию для API как основной источник.
 - Для `group=electronik` source of truth:
-  mongodb://mongo:27017/electronik, collection parsed_products
+  mongodb://mongo:27017/resultdb, collection electronik
 - Настроить через env:
   - MARKET_API_MONGO_URL=mongodb://mongo:27017
+  - MARKET_API_RESULT_DB=resultdb
   - MARKET_API_DEFAULT_GROUP=electronik
   - MARKET_API_ALLOWED_GROUPS=electronik
-  - MARKET_API_GROUP_DB_MAP=electronik:electronik
-  - MARKET_API_COLLECTION=parsed_products
-  - MARKET_API_SOURCE_PROJECTS=cnlinko
+  - MARKET_API_GROUP_COLLECTION_MAP=electronik:electronik
+  - MARKET_API_SOURCE_PROJECT=cnlinko
   - PARSER_API_KEY=<secret>
   - PAGE_SIZE=100
 
-Синхронизация из pyspider resultdb:
-- Реализуй команду, которую можно запускать внутри API-контейнера:
-  python -m market_api.sync
-- Команда должна:
-  1. подключиться к MongoDB;
-  2. читать только разрешенные source-проекты из `MARKET_API_SOURCE_PROJECTS`, на первом этапе это `cnlinko`;
-  3. прочитать документы с полями taskid, url, result, updatetime;
-  4. распарсить result, если это JSON-строка;
-  5. пропустить пустые/не товарные результаты;
-  6. нормализовать поля в `<target_db>.parsed_products`, где target_db выбран из `MARKET_API_DEFAULT_GROUP` или явного аргумента sync-команды;
-  7. сделать upsert по стабильному ключу:
-     - external_id, если есть;
-     - иначе id, если есть;
-     - иначе taskid;
-     - вместе с donor/project, чтобы не было конфликтов;
-  8. сохранить source_project, source_taskid, source_url, source_updatetime.
+Запись товаров из парсера:
+- Переписать/довести один рабочий парсер `cnlinko`, чтобы итоговые товары попадали в `resultdb.<group>`, где group по умолчанию `electronik`.
+- Не плодить отдельные API-source коллекции по имени проекта.
+- Если используется pyspider `on_result`, он должен upsert-ить товар в `resultdb.electronik`.
+- Upsert делать по стабильному ключу:
+  - external_id, если есть;
+  - иначе id, если есть;
+  - иначе donor_url;
+  - иначе source_taskid/taskid.
+- Вместе с товаром сохранить технические поля:
+  - source_project: "cnlinko";
+  - source_taskid;
+  - source_url;
+  - source_updatetime;
+  - updated_at.
 
-CLI sync должен поддержать явный group:
-  python -m market_api.sync --group electronik --project cnlinko
-
-Если `--project` не передан, использовать `MARKET_API_SOURCE_PROJECTS`.
-Если `--group` не передан, использовать `MARKET_API_DEFAULT_GROUP`.
+Опциональный CLI repair/sync:
+- Можно добавить команду для переноса старых тестовых данных из `resultdb.cnlinko` или `resultdb.cnlinko_test` в `resultdb.electronik`, но это вспомогательная миграция, а не основная архитектура.
+- Пример:
+  python -m market_api.sync --group electronik --source-project cnlinko
 
 Нормализация товара:
 - Pyspider parser-standard использует часть camelCase и часть snake_case.
@@ -120,7 +119,7 @@ CLI sync должен поддержать явный group:
   - external_id и id;
   - old_price и oldPrice, если пригодится;
   - main_image и mainImage.
-- Поля документа parsed_products:
+- Поля документа в `resultdb.<group>`:
   {
     "_id": ObjectId,
     "external_id": "stable-id",
@@ -172,7 +171,7 @@ CLI sync должен поддержать явный group:
 - Не возвращать HTML.
 - Добавить OpenAPI-документацию FastAPI.
 - Добавить Pydantic response models.
-- Игнорировать неизвестные query params, но `group` не игнорировать: использовать его как безопасный выбор MongoDB-базы через whitelist/map.
+- Игнорировать неизвестные query params, но `group` не игнорировать: использовать его как безопасный выбор коллекции внутри `resultdb` через whitelist/map.
 - Не падать, если у товара нет необязательных полей.
 - Добавить обработку ошибок MongoDB:
   - при ошибке подключения вернуть 503;
@@ -332,11 +331,11 @@ Docker:
   - ports: "8081:8080"
   - env:
     - MARKET_API_MONGO_URL=mongodb://mongo:27017
+    - MARKET_API_RESULT_DB=resultdb
     - MARKET_API_DEFAULT_GROUP=electronik
     - MARKET_API_ALLOWED_GROUPS=electronik
-    - MARKET_API_GROUP_DB_MAP=electronik:electronik
-    - MARKET_API_COLLECTION=parsed_products
-    - MARKET_API_SOURCE_PROJECTS=cnlinko
+    - MARKET_API_GROUP_COLLECTION_MAP=electronik:electronik
+    - MARKET_API_SOURCE_PROJECT=cnlinko
     - PARSER_API_KEY=${PARSER_API_KEY}
     - PAGE_SIZE=100
 - Добавить такой же сервис в docker-compose.local.yml.
@@ -363,7 +362,7 @@ Docker:
    docker compose -p pyspider-modernized -f docker-compose.server.yml up -d --build market-api
 5. Выполни синхронизацию:
    docker compose -p pyspider-modernized -f docker-compose.server.yml exec -T market-api \
-     python -m market_api.sync --group electronik --project cnlinko
+     python -m market_api.sync --group electronik --source-project cnlinko
 6. Проверь:
    curl -s http://127.0.0.1:8081/health
    curl -s 'http://127.0.0.1:8081/market/parsing/search?api_key=<key>&q=<known_cnlinko_query>&group=electronik'
@@ -390,8 +389,8 @@ Acceptance criteria:
 parser_workspace/prompts/market-api.md
 
 Ключевые реалии проекта:
-- pyspider results лежат в Mongo resultdb, по коллекциям resultdb.<project>, внутри поля result;
-- сделай нормализованную коллекцию electronik.parsed_products, где group=electronik выбирает базу electronik;
+- товары для legacy API должны лежать в Mongo resultdb.<group>, например resultdb.electronik;
+- у нас один рабочий парсер: cnlinko; его товары нужно писать/мигрировать в resultdb.electronik;
 - API endpoints: /health, /market/parsing/search, /market/parsing/catalog;
 - api_key брать из env PARSER_API_KEY;
 - Docker service market-api, внешний порт 8081, не использовать 8000;
